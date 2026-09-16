@@ -1,5 +1,5 @@
-// Ambient Background Music Engine using Web Audio API + HTMLAudioElement for custom streaming links
-// Allows authors, admins, and collaborators to add, remove, and link custom music streams or MP3s.
+// Ambient Background Music Engine using Web Audio API + HTMLAudioElement + Iframe Audio Widget
+// Supports direct MP3/M4A/WAV, SoundCloud, Google Drive, YouTube, and gentle built-in Lofi Synth.
 
 import { db, doc, setDoc, deleteDoc, onSnapshot, collection } from '../lib/firebase';
 
@@ -9,9 +9,18 @@ export interface AudioTrack {
   artist: string;
   duration?: string;
   mood?: string;
-  audioUrl?: string; // Direct audio URL (mp3, wav, stream, m4a, google drive, soundcloud)
+  audioUrl?: string; // Direct audio URL, SoundCloud, Google Drive, YouTube, Dropbox, etc.
   addedBy?: string;
   createdAt?: string;
+}
+
+export type AudioSourceType = 'synth' | 'direct' | 'soundcloud' | 'gdrive' | 'youtube';
+
+export interface ResolvedAudioSource {
+  sourceType: AudioSourceType;
+  streamUrl?: string;
+  embedUrl?: string;
+  parsedDuration?: number;
 }
 
 export interface AudioPlaybackState {
@@ -21,62 +30,75 @@ export interface AudioPlaybackState {
   tracks: AudioTrack[];
   currentTime: number; // in seconds
   duration: number; // in seconds
-  isExternal: boolean;
-  isSoundCloud: boolean;
-  soundCloudWidgetUrl?: string;
+  sourceType: AudioSourceType;
+  embedUrl?: string;
+  isMuted: boolean;
   error?: string | null;
 }
 
 /**
- * Universal audio URL resolver that converts Google Drive, Dropbox,
- * OneDrive sharing links into direct streaming URLs for HTML5 Audio.
+ * Universal audio URL resolver that converts Google Drive, SoundCloud,
+ * YouTube, Dropbox, OneDrive sharing links into playable formats.
  */
-export function resolveDirectAudioUrl(rawUrl?: string): {
-  url: string;
-  isSoundCloud: boolean;
-  soundCloudEmbedUrl?: string;
-  converted: boolean;
-} {
-  if (!rawUrl) return { url: '', isSoundCloud: false, converted: false };
-  let url = rawUrl.trim();
+export function resolveAudioSource(rawUrl?: string, fallbackDuration = '03:30'): ResolvedAudioSource {
+  const parsedDuration = parseDurationToSeconds(fallbackDuration);
 
-  // 1. Check for SoundCloud URLs
-  if (url.includes('soundcloud.com')) {
-    // Check if it's already a direct soundcloud cdn stream (.mp3/.128.mp3)
-    if (url.includes('sndcdn.com') || url.endsWith('.mp3')) {
-      return { url, isSoundCloud: false, converted: false };
-    }
-    // Web SoundCloud link -> produce SoundCloud Widget Player URL
-    const encoded = encodeURIComponent(url);
-    const soundCloudEmbedUrl = `https://w.soundcloud.com/player/?url=${encoded}&color=%23f43f5e&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=false`;
-    return { url, isSoundCloud: true, soundCloudEmbedUrl, converted: true };
+  if (!rawUrl || !rawUrl.trim()) {
+    return { sourceType: 'synth', parsedDuration };
   }
 
-  // 2. Check for Google Drive links
+  const url = rawUrl.trim();
+
+  // 1. SoundCloud links
+  if (url.includes('soundcloud.com')) {
+    // If it is already a direct audio cdn stream
+    if (url.includes('sndcdn.com') || url.endsWith('.mp3')) {
+      return { sourceType: 'direct', streamUrl: url, parsedDuration };
+    }
+    // Web SoundCloud link -> generate clean SoundCloud Widget Player Embed URL
+    const encoded = encodeURIComponent(url);
+    const embedUrl = `https://w.soundcloud.com/player/?url=${encoded}&color=%23f43f5e&auto_play=true&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=false`;
+    return { sourceType: 'soundcloud', embedUrl, parsedDuration };
+  }
+
+  // 2. Google Drive links
   // Pattern A: https://drive.google.com/file/d/FILE_ID/view...
   // Pattern B: https://drive.google.com/open?id=FILE_ID
   // Pattern C: https://drive.google.com/uc?id=FILE_ID
   const gDriveMatch = url.match(/drive\.google\.com\/(?:file\/d\/([a-zA-Z0-9_-]+)|open\?id=([a-zA-Z0-9_-]+)|uc\?(?:export=[a-z]+&)?id=([a-zA-Z0-9_-]+))/i);
   const gDriveId = gDriveMatch ? (gDriveMatch[1] || gDriveMatch[2] || gDriveMatch[3]) : null;
   if (gDriveId) {
-    const directUrl = `https://docs.google.com/uc?export=download&id=${gDriveId}`;
-    return { url: directUrl, isSoundCloud: false, converted: true };
+    const streamUrl = `https://docs.google.com/uc?export=open&id=${gDriveId}`;
+    const embedUrl = `https://drive.google.com/file/d/${gDriveId}/preview`;
+    return { sourceType: 'gdrive', streamUrl, embedUrl, parsedDuration };
   }
 
-  // 3. Check for Dropbox links
+  // 3. YouTube links
+  // Pattern A: https://www.youtube.com/watch?v=VIDEO_ID
+  // Pattern B: https://youtu.be/VIDEO_ID
+  // Pattern C: https://www.youtube.com/shorts/VIDEO_ID
+  const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+  if (ytMatch && ytMatch[1]) {
+    const ytId = ytMatch[1];
+    const embedUrl = `https://www.youtube.com/embed/${ytId}?autoplay=1&controls=0&loop=1&playlist=${ytId}&enablejsapi=1&origin=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}`;
+    return { sourceType: 'youtube', embedUrl, parsedDuration };
+  }
+
+  // 4. Dropbox links
   if (url.includes('dropbox.com')) {
-    let directUrl = url.replace(/[?&]dl=0/, '').replace(/[?&]dl=1/, '');
-    directUrl += directUrl.includes('?') ? '&raw=1' : '?raw=1';
-    return { url: directUrl, isSoundCloud: false, converted: true };
+    let streamUrl = url.replace(/[?&]dl=0/, '').replace(/[?&]dl=1/, '');
+    streamUrl += streamUrl.includes('?') ? '&raw=1' : '?raw=1';
+    return { sourceType: 'direct', streamUrl, parsedDuration };
   }
 
-  // 4. Check for OneDrive links
+  // 5. OneDrive links
   if (url.includes('1drv.ms') || url.includes('onedrive.live.com')) {
-    const directUrl = url.replace('redir?', 'download?');
-    return { url: directUrl, isSoundCloud: false, converted: true };
+    const streamUrl = url.replace('redir?', 'download?');
+    return { sourceType: 'direct', streamUrl, parsedDuration };
   }
 
-  return { url, isSoundCloud: false, converted: false };
+  // 6. Direct HTTP/HTTPS audio file or stream
+  return { sourceType: 'direct', streamUrl: url, parsedDuration };
 }
 
 /**
@@ -178,13 +200,15 @@ class BackgroundMusicEngine {
   private volume = 0.4;
   private masterGain: GainNode | null = null;
   private intervalId: number | null = null;
+  private progressTimerId: number | null = null;
   private step = 0;
   private audioEl: HTMLAudioElement | null = null;
-  private isExternalAudio = false;
   private tracks: AudioTrack[] = [...DEFAULT_TRACK_LIST];
-  private listeners: Array<
-    (state: { isPlaying: boolean; track: AudioTrack; volume: number; tracks: AudioTrack[] }) => void
-  > = [];
+  private currentTime = 0;
+  private duration = 225; // in seconds
+  private currentSource: ResolvedAudioSource = { sourceType: 'synth', parsedDuration: 225 };
+  private listeners: Array<(state: AudioPlaybackState) => void> = [];
+  private fallbackTimeoutId: number | null = null;
 
   constructor() {
     this.loadTracksFromStorage();
@@ -205,6 +229,11 @@ class BackgroundMusicEngine {
     } catch {
       // safe fallback
     }
+
+    // Set initial duration
+    const track = this.getCurrentTrack();
+    this.currentSource = resolveAudioSource(track.audioUrl, track.duration);
+    this.duration = this.currentSource.parsedDuration || parseDurationToSeconds(track.duration);
   }
 
   private initFirestoreSync() {
@@ -229,7 +258,6 @@ class BackgroundMusicEngine {
               });
             });
 
-            // Sort by createdAt or maintain stable order
             remoteTracks.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
 
             if (remoteTracks.length > 0) {
@@ -284,12 +312,32 @@ class BackgroundMusicEngine {
     return this.tracks[this.currentTrackIndex] || this.tracks[0] || DEFAULT_TRACK_LIST[0];
   }
 
-  public getPlaybackState(): { isPlaying: boolean; track: AudioTrack; tracks: AudioTrack[] } {
+  public getPlaybackState(): AudioPlaybackState {
+    const track = this.getCurrentTrack();
     return {
       isPlaying: this.isPlaying,
-      track: this.getCurrentTrack(),
+      track,
+      volume: this.volume,
       tracks: this.getTracks(),
+      currentTime: this.currentTime,
+      duration: this.duration > 0 ? this.duration : parseDurationToSeconds(track.duration),
+      sourceType: this.currentSource.sourceType,
+      embedUrl: this.currentSource.embedUrl,
+      isMuted: this.volume === 0,
     };
+  }
+
+  public subscribe(fn: (state: AudioPlaybackState) => void) {
+    this.listeners.push(fn);
+    fn(this.getPlaybackState());
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== fn);
+    };
+  }
+
+  private notify() {
+    const state = this.getPlaybackState();
+    this.listeners.forEach((fn) => fn(state));
   }
 
   public async addTrack(track: Omit<AudioTrack, 'id'>): Promise<AudioTrack> {
@@ -302,7 +350,6 @@ class BackgroundMusicEngine {
     this.saveTracksToStorage();
     this.notify();
 
-    // Async sync to Firestore
     try {
       await setDoc(doc(db, 'music_tracks', newTrack.id), newTrack);
     } catch (err) {
@@ -321,7 +368,12 @@ class BackgroundMusicEngine {
       ...updates,
     };
     this.saveTracksToStorage();
-    this.notify();
+
+    if (this.currentTrackIndex === index && this.isPlaying) {
+      this.play(index);
+    } else {
+      this.notify();
+    }
 
     try {
       await setDoc(doc(db, 'music_tracks', trackId), this.tracks[index], { merge: true });
@@ -332,7 +384,7 @@ class BackgroundMusicEngine {
   }
 
   public async removeTrack(trackId: string): Promise<boolean> {
-    if (this.tracks.length <= 1) return false; // keep at least 1 track
+    if (this.tracks.length <= 1) return false;
     const indexToRemove = this.tracks.findIndex((t) => t.id === trackId);
     if (indexToRemove === -1) return false;
 
@@ -371,7 +423,6 @@ class BackgroundMusicEngine {
       this.notify();
     }
 
-    // Clean up Firestore custom tracks
     try {
       for (const t of oldTracks) {
         if (!DEFAULT_TRACK_LIST.some((def) => def.id === t.id)) {
@@ -386,7 +437,7 @@ class BackgroundMusicEngine {
     }
   }
 
-  private initAudio() {
+  private initAudioContext() {
     if (!this.ctx) {
       const AudioContextClass =
         window.AudioContext ||
@@ -403,35 +454,6 @@ class BackgroundMusicEngine {
     }
   }
 
-  public subscribe(
-    fn: (state: {
-      isPlaying: boolean;
-      track: AudioTrack;
-      volume: number;
-      tracks: AudioTrack[];
-    }) => void
-  ) {
-    this.listeners.push(fn);
-    fn(this.getState());
-    return () => {
-      this.listeners = this.listeners.filter((l) => l !== fn);
-    };
-  }
-
-  private notify() {
-    const state = this.getState();
-    this.listeners.forEach((fn) => fn(state));
-  }
-
-  public getState() {
-    return {
-      isPlaying: this.isPlaying,
-      track: this.tracks[this.currentTrackIndex] || this.tracks[0] || DEFAULT_TRACK_LIST[0],
-      volume: this.volume,
-      tracks: this.tracks,
-    };
-  }
-
   public togglePlay() {
     if (this.isPlaying) {
       this.pause();
@@ -441,58 +463,149 @@ class BackgroundMusicEngine {
   }
 
   private stopExternalAudio() {
+    if (this.fallbackTimeoutId) {
+      window.clearTimeout(this.fallbackTimeoutId);
+      this.fallbackTimeoutId = null;
+    }
     if (this.audioEl) {
       this.audioEl.pause();
-      this.audioEl.currentTime = 0;
+      this.audioEl.removeAttribute('src');
+      this.audioEl.load();
       this.audioEl = null;
     }
-    this.isExternalAudio = false;
   }
 
   public play(trackIndex?: number) {
     if (trackIndex !== undefined && trackIndex >= 0 && trackIndex < this.tracks.length) {
       this.currentTrackIndex = trackIndex;
+      this.currentTime = 0;
       try {
         localStorage.setItem('better_bgm_track', trackIndex.toString());
       } catch {}
     }
 
-    const currentTrack = this.tracks[this.currentTrackIndex];
+    const currentTrack = this.getCurrentTrack();
+    this.currentSource = resolveAudioSource(currentTrack.audioUrl, currentTrack.duration);
+    this.duration = this.currentSource.parsedDuration || parseDurationToSeconds(currentTrack.duration);
+
     this.stopExternalAudio();
+    this.stopProgressTimer();
 
-    // Check if current track has custom streaming URL
-    if (currentTrack?.audioUrl && currentTrack.audioUrl.trim().length > 5) {
-      try {
-        this.audioEl = new Audio(currentTrack.audioUrl.trim());
-        this.audioEl.volume = this.volume;
-        this.audioEl.loop = true;
-        this.isExternalAudio = true;
-
-        const playPromise = this.audioEl.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              this.isPlaying = true;
-              this.notify();
-            })
-            .catch((err) => {
-              console.warn('Direct audio stream failed, falling back to gentle synth:', err);
-              this.stopExternalAudio();
-              this.playSynth();
-            });
-        }
-        return;
-      } catch (e) {
-        console.warn('Audio tag failed:', e);
-        this.stopExternalAudio();
-      }
+    // CASE 1: Embedded Player (SoundCloud / YouTube)
+    if (this.currentSource.sourceType === 'soundcloud' || this.currentSource.sourceType === 'youtube') {
+      this.isPlaying = true;
+      this.startProgressSimulation();
+      this.notify();
+      return;
     }
 
+    // CASE 2: Google Drive Audio
+    if (this.currentSource.sourceType === 'gdrive') {
+      this.isPlaying = true;
+      // Try playing via direct stream first
+      if (this.currentSource.streamUrl) {
+        this.attemptDirectAudio(this.currentSource.streamUrl, () => {
+          // If direct Google Drive audio fails (e.g. CORS/redirect), keep playing via embed preview
+          console.log('Google Drive direct stream redirected; switched to background player.');
+          this.currentSource.sourceType = 'gdrive';
+          this.startProgressSimulation();
+          this.notify();
+        });
+      } else {
+        this.startProgressSimulation();
+        this.notify();
+      }
+      return;
+    }
+
+    // CASE 3: Direct Streaming URL (MP3/M4A/WAV/Dropbox/OneDrive)
+    if (this.currentSource.sourceType === 'direct' && this.currentSource.streamUrl) {
+      this.attemptDirectAudio(this.currentSource.streamUrl, () => {
+        // Fallback to ambient soft synth if direct URL is invalid or blocked
+        console.warn('Direct stream unreachable, playing ambient soothing synth.');
+        this.currentSource = { sourceType: 'synth', parsedDuration: this.duration };
+        this.playSynth();
+      });
+      return;
+    }
+
+    // CASE 4: Soft Built-in Ambient Synth
+    this.currentSource = { sourceType: 'synth', parsedDuration: this.duration };
     this.playSynth();
   }
 
+  private attemptDirectAudio(streamUrl: string, onFallback: () => void) {
+    try {
+      this.audioEl = new Audio();
+      this.audioEl.preload = 'auto';
+      this.audioEl.crossOrigin = 'anonymous';
+      this.audioEl.src = streamUrl;
+      this.audioEl.volume = this.volume;
+      this.audioEl.currentTime = this.currentTime;
+
+      // Event listeners for seek and progress bar
+      this.audioEl.addEventListener('timeupdate', () => {
+        if (this.audioEl && !isNaN(this.audioEl.currentTime)) {
+          this.currentTime = this.audioEl.currentTime;
+          if (!isNaN(this.audioEl.duration) && this.audioEl.duration > 0) {
+            this.duration = this.audioEl.duration;
+          }
+          this.notify();
+        }
+      });
+
+      this.audioEl.addEventListener('loadedmetadata', () => {
+        if (this.audioEl && !isNaN(this.audioEl.duration) && this.audioEl.duration > 0) {
+          this.duration = this.audioEl.duration;
+          this.notify();
+        }
+      });
+
+      this.audioEl.addEventListener('ended', () => {
+        this.nextTrack();
+      });
+
+      this.audioEl.addEventListener('error', (e) => {
+        console.warn('Audio tag error:', e);
+        this.stopExternalAudio();
+        onFallback();
+      });
+
+      // Set safety timeout in case the external stream hangs
+      this.fallbackTimeoutId = window.setTimeout(() => {
+        if (this.isPlaying && this.audioEl && this.audioEl.readyState === 0) {
+          console.warn('Audio stream timeout; using fallback.');
+          this.stopExternalAudio();
+          onFallback();
+        }
+      }, 7000);
+
+      const playPromise = this.audioEl.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            if (this.fallbackTimeoutId) {
+              window.clearTimeout(this.fallbackTimeoutId);
+              this.fallbackTimeoutId = null;
+            }
+            this.isPlaying = true;
+            this.notify();
+          })
+          .catch((err) => {
+            console.warn('Audio play request rejected:', err);
+            this.stopExternalAudio();
+            onFallback();
+          });
+      }
+    } catch (e) {
+      console.warn('Direct audio creation failed:', e);
+      this.stopExternalAudio();
+      onFallback();
+    }
+  }
+
   private playSynth() {
-    this.initAudio();
+    this.initAudioContext();
     if (!this.ctx) return;
 
     if (this.ctx.state === 'suspended') {
@@ -500,21 +613,46 @@ class BackgroundMusicEngine {
     }
 
     this.isPlaying = true;
+    this.startProgressSimulation();
     this.notify();
 
     if (this.intervalId) {
       window.clearInterval(this.intervalId);
     }
 
-    this.step = 0;
+    this.step = Math.floor(this.currentTime / 0.75) % 16;
     this.playStep();
     this.intervalId = window.setInterval(() => {
       this.playStep();
     }, 750);
   }
 
+  private startProgressSimulation() {
+    this.stopProgressTimer();
+    this.progressTimerId = window.setInterval(() => {
+      if (this.isPlaying) {
+        this.currentTime += 0.5;
+        if (this.currentTime >= this.duration) {
+          this.currentTime = 0;
+          this.nextTrack();
+        } else {
+          this.notify();
+        }
+      }
+    }, 500);
+  }
+
+  private stopProgressTimer() {
+    if (this.progressTimerId) {
+      window.clearInterval(this.progressTimerId);
+      this.progressTimerId = null;
+    }
+  }
+
   public pause() {
     this.isPlaying = false;
+    this.stopProgressTimer();
+
     if (this.audioEl) {
       this.audioEl.pause();
     }
@@ -522,6 +660,28 @@ class BackgroundMusicEngine {
       window.clearInterval(this.intervalId);
       this.intervalId = null;
     }
+    this.notify();
+  }
+
+  /**
+   * Seek directly to target seconds in the track
+   */
+  public seek(seconds: number) {
+    const target = Math.max(0, Math.min(seconds, this.duration));
+    this.currentTime = target;
+
+    if (this.audioEl && !isNaN(this.audioEl.duration)) {
+      try {
+        this.audioEl.currentTime = target;
+      } catch (err) {
+        console.warn('Audio seek error:', err);
+      }
+    }
+
+    if (this.currentSource.sourceType === 'synth') {
+      this.step = Math.floor(target / 0.75) % 16;
+    }
+
     this.notify();
   }
 
@@ -553,7 +713,7 @@ class BackgroundMusicEngine {
   }
 
   private playStep() {
-    if (!this.ctx || !this.masterGain || !this.isPlaying || this.isExternalAudio) return;
+    if (!this.ctx || !this.masterGain || !this.isPlaying || this.currentSource.sourceType !== 'synth') return;
 
     const chords = CHORD_PROGRESSIONS[this.currentTrackIndex % CHORD_PROGRESSIONS.length];
     const chordIndex = Math.floor(this.step / 4) % chords.length;
@@ -569,7 +729,7 @@ class BackgroundMusicEngine {
     if (Math.random() > 0.4) {
       const sparklePitch = PENTATONIC_FREQS[Math.floor(Math.random() * PENTATONIC_FREQS.length)];
       setTimeout(() => {
-        if (this.isPlaying && !this.isExternalAudio) {
+        if (this.isPlaying && this.currentSource.sourceType === 'synth') {
           this.playBellNote(sparklePitch, 1.2);
         }
       }, 350);

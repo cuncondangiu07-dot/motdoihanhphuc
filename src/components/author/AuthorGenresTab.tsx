@@ -10,7 +10,7 @@ import {
 } from '../../utils/genreManager';
 
 interface AuthorGenresTabProps {
-  onFeedback: (feedback: { type: 'success' | 'error'; text: string }) => void;
+  onFeedback?: (type: 'success' | 'error', text: string) => void;
 }
 
 export const AuthorGenresTab: React.FC<AuthorGenresTabProps> = ({ onFeedback }) => {
@@ -19,6 +19,7 @@ export const AuthorGenresTab: React.FC<AuthorGenresTabProps> = ({ onFeedback }) 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [genreToDelete, setGenreToDelete] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [inlineFeedback, setInlineFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     const unsubscribe = subscribeGenres((list) => {
@@ -26,6 +27,20 @@ export const AuthorGenresTab: React.FC<AuthorGenresTabProps> = ({ onFeedback }) 
     });
     return unsubscribe;
   }, []);
+
+  const triggerFeedback = (type: 'success' | 'error', text: string) => {
+    setInlineFeedback({ type, text });
+    setTimeout(() => {
+      setInlineFeedback(null);
+    }, 4000);
+    if (onFeedback) {
+      try {
+        onFeedback(type, text);
+      } catch {
+        // fallback
+      }
+    }
+  };
 
   const handleAddGenre = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,9 +52,9 @@ export const AuthorGenresTab: React.FC<AuthorGenresTabProps> = ({ onFeedback }) 
 
     if (result.success) {
       setNewGenreInput('');
-      onFeedback({ type: 'success', text: result.message });
+      triggerFeedback('success', result.message);
     } else {
-      onFeedback({ type: 'error', text: result.message });
+      triggerFeedback('error', result.message);
     }
   };
 
@@ -50,20 +65,37 @@ export const AuthorGenresTab: React.FC<AuthorGenresTabProps> = ({ onFeedback }) 
 
     const result = await deleteGenre(target);
     if (result.success) {
-      onFeedback({ type: 'success', text: result.message });
+      triggerFeedback('success', result.message);
     } else {
-      onFeedback({ type: 'error', text: result.message });
+      triggerFeedback('error', result.message);
     }
   };
 
   const handleConfirmReset = async () => {
     setShowResetConfirm(false);
     await resetGenresToDefault();
-    onFeedback({ type: 'success', text: 'Đã khôi phục danh sách thể loại về mặc định!' });
+    triggerFeedback('success', 'Đã khôi phục danh sách thể loại về mặc định!');
   };
 
   return (
     <div id="author-genres-tab" className="space-y-6 animate-in fade-in duration-200">
+      {/* Inline Feedback Notice */}
+      {inlineFeedback && (
+        <div
+          className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2 border shadow-xs animate-in fade-in slide-in-from-top-1 ${
+            inlineFeedback.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-800'
+              : 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-800'
+          }`}
+        >
+          {inlineFeedback.type === 'success' ? (
+            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+          )}
+          <span>{inlineFeedback.text}</span>
+        </div>
+      )}
       {/* Top Banner Card */}
       <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50/80 to-pink-50/80 dark:from-stone-800 dark:via-stone-850 dark:to-stone-800 border border-emerald-200/90 dark:border-stone-700 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

@@ -13,6 +13,7 @@ import {
 
 // Danh sách email chính thức của Tác giả & Các Cộng sự quản trị viên do khách hàng cung cấp
 export const AUTHOR_EMAILS: string[] = [
+  'cuncondangiu07@gmail.com',
   'meomeoxinhxinh07@gmail.com',
   'nhatlinhpham010194@gmail.com',
   'maianhpham927@gmail.com',
@@ -74,6 +75,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const isAuthor = AUTHOR_EMAILS.includes(emailLower);
 
     const isMainAuthor = isAuthor && (
+      emailLower === 'cuncondangiu07@gmail.com' ||
       emailLower === 'meomeoxinhxinh07@gmail.com' ||
       emailLower === 'nhatlinhpham010194@gmail.com' ||
       emailLower === 'maianhpham927@gmail.com'
@@ -202,6 +204,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const quickAuthorLogin = (authorEmail: string) => {
     const cleanEmail = authorEmail.toLowerCase().trim();
     const isMain =
+      cleanEmail === 'cuncondangiu07@gmail.com' ||
+      cleanEmail.split('@')[0] === 'cuncondangiu07' ||
       cleanEmail === 'meomeoxinhxinh07@gmail.com' ||
       cleanEmail.split('@')[0] === 'meomeoxinhxinh07' ||
       cleanEmail.split('@')[0] === 'nhatlinhpham010194' ||

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
   Sun,
@@ -14,6 +14,10 @@ import {
   Home,
   User as UserIcon,
   ShieldCheck,
+  ChevronDown,
+  Sparkles,
+  LogOut,
+  PenTool,
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { bgmEngine, AudioTrack, TRACK_LIST } from '../utils/audioPlayer';
@@ -40,11 +44,26 @@ export const Navbar: React.FC<NavbarProps> = ({
   onTogglePetals,
   onOpenAuthorModal,
 }) => {
-  const { user, isAuthor, openAuthModal } = useAuth();
+  const { user, isAuthor, openAuthModal, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<AudioTrack>(TRACK_LIST[0]);
+  const [isAuthorMenuOpen, setIsAuthorMenuOpen] = useState(false);
+  const authorMenuRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (authorMenuRef.current && !authorMenuRef.current.contains(event.target as Node)) {
+        setIsAuthorMenuOpen(false);
+      }
+    };
+    if (isAuthorMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAuthorMenuOpen]);
 
   useEffect(() => {
     const unsubscribe = bgmEngine.subscribe((state) => {
@@ -203,63 +222,165 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         {/* =================================================================== */}
-        {/* 3. ACTION CONTROLS (AUTHOR STUDIO, USER, UTILITY TOOLBAR)           */}
+        {/* 3. ACTION CONTROLS (INTEGRATED AUTHOR & ACCOUNT MENU, UTILITIES)     */}
         {/* =================================================================== */}
         <div id="navbar-action-controls" className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Author Studio Button - ONLY FOR AUTHOR & COLLABORATORS */}
-          {isAuthor && onOpenAuthorModal && (
+          {/* Integrated Author Studio & Account Dropdown Menu */}
+          <div className="relative" ref={authorMenuRef}>
             <button
               type="button"
-              id="navbar-author-studio-btn"
-              onClick={onOpenAuthorModal}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-pink-100/90 hover:bg-pink-200/90 text-pink-800 dark:bg-pink-950/80 dark:text-pink-300 dark:hover:bg-pink-900/80 border border-pink-200/80 dark:border-pink-800 text-xs font-semibold shadow-2xs transition-all cursor-pointer whitespace-nowrap"
-              title="Trung tâm Quản lý bài đăng & Đưa số liệu về 0 (Chỉ dành cho Tác giả)"
+              id="navbar-author-account-dropdown-btn"
+              onClick={() => setIsAuthorMenuOpen(!isAuthorMenuOpen)}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+                user
+                  ? isAuthor
+                    ? 'bg-rose-50/90 hover:bg-rose-100/90 dark:bg-pink-950/80 dark:hover:bg-pink-900/80 text-rose-800 dark:text-pink-300 border-rose-200 dark:border-pink-800'
+                    : 'bg-stone-100/90 hover:bg-stone-200/90 dark:bg-stone-800 dark:hover:bg-stone-750 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700'
+                  : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white border-transparent'
+              }`}
+              title="Menu Tác giả & Tài khoản"
+              aria-expanded={isAuthorMenuOpen}
             >
-              <span className="select-none text-xs">🌸</span>
-              <span className="whitespace-nowrap leading-none font-medium">Bàn làm việc</span>
+              {user ? (
+                <>
+                  <div className="w-5 h-5 rounded-full bg-pink-200 dark:bg-pink-900 text-pink-700 dark:text-pink-300 flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{(user.displayName || user.email || 'M')[0].toUpperCase()}</span>
+                    )}
+                  </div>
+                  <span className="font-serif truncate max-w-[85px] leading-none">
+                    {isAuthor ? '🌸 Mel' : (user.displayName || 'Tài khoản')}
+                  </span>
+                  <ChevronDown
+                    className={`w-3 h-3 text-stone-500 dark:text-stone-400 transition-transform duration-200 ${
+                      isAuthorMenuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </>
+              ) : (
+                <>
+                  <UserIcon className="w-3.5 h-3.5" />
+                  <span className="inline font-medium leading-none">Tài khoản</span>
+                  <ChevronDown
+                    className={`w-3 h-3 transition-transform duration-200 ${
+                      isAuthorMenuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </>
+              )}
             </button>
-          )}
 
-          {/* User Account / Google Login Button */}
-          <button
-            type="button"
-            id="navbar-auth-btn"
-            onClick={openAuthModal}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-medium transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
-              user
-                ? isAuthor
-                  ? 'bg-rose-50 dark:bg-pink-950/80 text-rose-700 dark:text-pink-300 border-rose-200 dark:border-pink-800'
-                  : 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200 border-stone-200 dark:border-stone-700'
-                : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white border-transparent'
-            }`}
-            title={
-              user
-                ? isAuthor
-                  ? 'Tài khoản Tác giả / Quản trị viên (Nhấp để quản lý)'
-                  : 'Tài khoản Độc giả (Nhấp để quản lý)'
-                : 'Đăng nhập Google để gửi bình luận & tâm tư'
-            }
-          >
-            {user ? (
-              <>
-                <div className="w-5 h-5 rounded-full bg-pink-200 dark:bg-pink-900 text-pink-700 dark:text-pink-300 flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <span>{(user.displayName || user.email || 'M')[0].toUpperCase()}</span>
+            {/* Dropdown Menu Popover */}
+            {isAuthorMenuOpen && (
+              <div
+                id="author-account-dropdown-menu"
+                className="absolute right-0 mt-2 w-64 rounded-2xl bg-white/98 dark:bg-stone-900/98 backdrop-blur-md border border-pink-200/90 dark:border-stone-700 shadow-2xl z-50 p-2 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150"
+              >
+                {/* User Info Header */}
+                <div className="p-2.5 rounded-xl bg-gradient-to-br from-pink-50/70 via-rose-50/50 to-amber-50/30 dark:from-stone-800 dark:to-stone-850 border border-pink-100 dark:border-stone-700/80">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-pink-200 dark:bg-pink-900 text-pink-700 dark:text-pink-300 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
+                      {user?.photoURL ? (
+                        <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{user ? (user.displayName || user.email || 'M')[0].toUpperCase() : '🌸'}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-serif text-xs font-bold text-stone-900 dark:text-stone-100 truncate">
+                        {user ? (user.displayName || 'Độc giả') : 'Mellifluous Blog'}
+                      </div>
+                      <div className="text-[10px] text-pink-600 dark:text-pink-400 font-mono truncate">
+                        {user ? user.email : 'Chưa đăng nhập'}
+                      </div>
+                    </div>
+                  </div>
+                  {isAuthor && (
+                    <div className="mt-2 pt-1.5 border-t border-pink-100 dark:border-stone-700 flex items-center justify-between text-[10px]">
+                      <span className="text-pink-700 dark:text-pink-300 font-semibold flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        <span>Tác giả & Quản trị</span>
+                      </span>
+                      <span className="px-1.5 py-0.2 rounded-full bg-pink-200/80 dark:bg-pink-950 text-pink-800 dark:text-pink-300 font-mono text-[9px]">
+                        Admin
+                      </span>
+                    </div>
                   )}
                 </div>
-                <span className="font-serif truncate max-w-[85px] leading-none">
-                  {isAuthor ? '🌸 Mel' : (user.displayName || 'Độc giả')}
-                </span>
-              </>
-            ) : (
-              <>
-                <UserIcon className="w-3.5 h-3.5" />
-                <span className="inline font-medium leading-none">Đăng nhập</span>
-              </>
+
+                {/* Author Studio Option (Integrated Branch) */}
+                {isAuthor && onOpenAuthorModal && (
+                  <button
+                    type="button"
+                    id="navbar-author-studio-item"
+                    onClick={() => {
+                      setIsAuthorMenuOpen(false);
+                      onOpenAuthorModal();
+                    }}
+                    className="w-full text-left p-2.5 rounded-xl hover:bg-pink-50 dark:hover:bg-pink-950/60 text-stone-800 dark:text-stone-100 flex items-center gap-2.5 transition-colors cursor-pointer group"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-pink-100 dark:bg-pink-950 text-pink-600 dark:text-pink-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <PenTool className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold flex items-center gap-1.5 text-pink-700 dark:text-pink-300">
+                        <span>Bàn làm việc Tác giả</span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-pink-100 dark:bg-pink-900 text-pink-800 dark:text-pink-200 font-sans">
+                          Studio
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
+                        Đăng truyện, sửa chương, quản lý nhạc & thẻ
+                      </div>
+                    </div>
+                  </button>
+                )}
+
+                {/* Account Settings / Profile Option */}
+                <button
+                  type="button"
+                  id="navbar-account-profile-item"
+                  onClick={() => {
+                    setIsAuthorMenuOpen(false);
+                    openAuthModal();
+                  }}
+                  className="w-full text-left p-2.5 rounded-xl hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-100 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 flex items-center justify-center shrink-0">
+                    <UserIcon className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold">
+                      {user ? 'Hồ sơ & Tài khoản' : 'Đăng nhập tài khoản'}
+                    </div>
+                    <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
+                      {user ? 'Đổi biệt hiệu, xem thông tin tài khoản' : 'Đăng nhập Google / Email để gửi tâm tư'}
+                    </div>
+                  </div>
+                </button>
+
+                {/* Logout Button (if logged in) */}
+                {user && (
+                  <button
+                    type="button"
+                    id="navbar-account-logout-item"
+                    onClick={() => {
+                      setIsAuthorMenuOpen(false);
+                      logout();
+                    }}
+                    className="w-full text-left p-2 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-stone-100 dark:border-stone-800 mt-1"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-rose-100/70 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                      <LogOut className="w-3 h-3" />
+                    </div>
+                    <span className="text-xs font-medium">Đăng xuất tài khoản</span>
+                  </button>
+                )}
+              </div>
             )}
-          </button>
+          </div>
 
           {/* Compact Reading Utilities Group (Search, Music, Petals, Theme) */}
           <div className="flex items-center gap-1 p-0.5 rounded-xl bg-stone-100/90 dark:bg-stone-800/90 border border-stone-200/80 dark:border-stone-700/80 shadow-2xs">

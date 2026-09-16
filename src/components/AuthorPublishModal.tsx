@@ -223,8 +223,15 @@ export const AuthorPublishModal: React.FC<AuthorPublishModalProps> = ({
     );
   }
 
-  const showFeedback = (type: 'success' | 'error', text: string) => {
-    setFeedbackMessage({ type, text });
+  const showFeedback = (
+    typeOrObj: 'success' | 'error' | { type: 'success' | 'error'; text: string },
+    textMaybe?: string
+  ) => {
+    if (typeof typeOrObj === 'object' && typeOrObj !== null) {
+      setFeedbackMessage({ type: typeOrObj.type, text: typeOrObj.text });
+    } else if (textMaybe) {
+      setFeedbackMessage({ type: typeOrObj as 'success' | 'error', text: textMaybe });
+    }
     setTimeout(() => {
       setFeedbackMessage(null);
     }, 4500);
