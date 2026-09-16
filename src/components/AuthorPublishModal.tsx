@@ -28,6 +28,8 @@ import {
   Heart,
   ChevronDown,
   Tag,
+  Users,
+  RefreshCw,
 } from 'lucide-react';
 import {
   publishStory,
@@ -36,6 +38,7 @@ import {
   subscribeToReaderLetters,
   replyToReaderLetter,
   deleteReaderLetter,
+  resetAllMetricsToZero,
 } from '../lib/realtimeService';
 import { useAuth } from '../lib/authContext';
 import { AuthorMusicTab } from './author/AuthorMusicTab';
@@ -43,6 +46,7 @@ import { AuthorEditStoryTab } from './author/AuthorEditStoryTab';
 import { AuthorEditChapterTab } from './author/AuthorEditChapterTab';
 import { AuthorAnnouncementsTab } from './author/AuthorAnnouncementsTab';
 import { AuthorGenresTab } from './author/AuthorGenresTab';
+import { AuthorCollaboratorsTab } from './author/AuthorCollaboratorsTab';
 import { getCustomGenres, subscribeToCustomGenres } from '../utils/genreManager';
 
 interface AuthorPublishModalProps {
@@ -94,6 +98,7 @@ export const AuthorPublishModal: React.FC<AuthorPublishModalProps> = ({
     | 'announcements'
     | 'music'
     | 'letters'
+    | 'collaborators'
     | 'manage';
 
   const [activeTab, setActiveTab] = useState<TabType>('newStory');
@@ -505,7 +510,8 @@ export const AuthorPublishModal: React.FC<AuthorPublishModalProps> = ({
               <option value="announcements">📢 6. Bảng tin & Thông báo ({announcements.length})</option>
               <option value="music">🎵 7. Quản lý Playlist Nhạc</option>
               <option value="letters">💌 8. Hòm thư bạn đọc ({letters.length})</option>
-              <option value="manage">📚 9. Quản lý tổng quan ({stories.length})</option>
+              <option value="collaborators">👥 9. Phân quyền Gmail & Cộng sự</option>
+              <option value="manage">📚 10. Quản lý tổng quan ({stories.length})</option>
             </select>
           </div>
 
@@ -613,6 +619,19 @@ export const AuthorPublishModal: React.FC<AuthorPublishModalProps> = ({
             >
               <Mail className="w-3.5 h-3.5" />
               <span>Hòm thư ({letters.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('collaborators')}
+              className={`shrink-0 py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                activeTab === 'collaborators'
+                  ? 'bg-pink-500 text-white shadow-xs'
+                  : 'text-stone-700 dark:text-stone-200 hover:bg-pink-100/60 dark:hover:bg-stone-800 hover:text-pink-700 dark:hover:text-pink-300'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Cộng sự & Quản trị</span>
             </button>
 
             <button
@@ -1245,9 +1264,42 @@ export const AuthorPublishModal: React.FC<AuthorPublishModalProps> = ({
             </div>
           )}
 
-          {/* TAB 8: QUẢN LÝ TỔNG QUAN */}
+          {/* TAB 9: QUẢN LÝ CỘNG SỰ & PHÂN QUYỀN GMAIL */}
+          {activeTab === 'collaborators' && (
+            <AuthorCollaboratorsTab
+              onFeedback={(type, text) => showFeedback(type, text)}
+            />
+          )}
+
+          {/* TAB 10: QUẢN LÝ TỔNG QUAN */}
           {activeTab === 'manage' && (
             <div className="space-y-4">
+              {/* Metric Reset to 0 (Official site launch feature) */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/80 dark:bg-stone-800 border border-amber-200 dark:border-stone-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                <div>
+                  <h4 className="font-serif text-sm font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span>Khởi tạo số liệu thực tế website chính thức</span>
+                  </h4>
+                  <p className="text-xs text-stone-600 dark:text-stone-300 mt-1">
+                    Đặt lại Lượt ghé thăm, Lượt yêu thích và Lượt bình luận về số 0 thực tế bắt đầu từ khi xuất bản chính thức.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (confirm('Bạn có chắc chắn muốn đặt lại Lượt ghé thăm, Yêu thích và Bình luận về 0 thực tế cho website chính thức?')) {
+                      await resetAllMetricsToZero();
+                      showFeedback('success', 'Đã đặt lại toàn bộ số liệu thống kê website về 0 thực tế!');
+                    }
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Đặt lại số liệu về 0</span>
+                </button>
+              </div>
+
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-stone-600 dark:text-stone-400">
                   Hiện có <strong>{stories.length}</strong> bộ truyện trên website

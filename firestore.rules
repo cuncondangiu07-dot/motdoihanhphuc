@@ -71,5 +71,20 @@ service cloud.firestore {
       allow read: if true;
       allow write: if true;
     }
+
+    // Reader Realtime Presence
+    match /reader_presences/{visitorId} {
+      allow read, write: if true;
+    }
+
+    // User profiles (display name, bio, avatar, nickname, roles)
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Collaborators, Co-authors, and Administrators management
+    match /collaborators/{collabId} {
+      allow read, write: if true;
+    }
   }
 }

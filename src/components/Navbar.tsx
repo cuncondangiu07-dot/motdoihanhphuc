@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search,
   Sun,
@@ -18,6 +19,8 @@ import {
   Sparkles,
   LogOut,
   PenTool,
+  Edit3,
+  Settings,
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { bgmEngine, AudioTrack, TRACK_LIST } from '../utils/audioPlayer';
@@ -44,7 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onTogglePetals,
   onOpenAuthorModal,
 }) => {
-  const { user, isAuthor, openAuthModal, logout } = useAuth();
+  const { user, isAuthor, openAuthModal, openProfileModal, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<AudioTrack>(TRACK_LIST[0]);
@@ -135,11 +138,24 @@ export const Navbar: React.FC<NavbarProps> = ({
     setIsMobileMenuOpen(false);
   };
 
+  // Lock body scroll when mobile navigation drawer is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen]);
+
   const isHomeActive = currentTab === 'home';
 
   return (
-    <header
-      id="main-navbar"
+    <>
+      <header
+        id="main-navbar"
       className="fixed top-0 left-0 right-0 z-50 w-full backdrop-blur-md transition-colors duration-300 border-b
         bg-white/95 border-pink-100/80 text-stone-800
         dark:bg-stone-900/95 dark:border-stone-800/90 dark:text-stone-100 shadow-xs"
@@ -225,8 +241,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* 3. ACTION CONTROLS (INTEGRATED AUTHOR & ACCOUNT MENU, UTILITIES)     */}
         {/* =================================================================== */}
         <div id="navbar-action-controls" className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Integrated Author Studio & Account Dropdown Menu */}
-          <div className="relative" ref={authorMenuRef}>
+          {/* Integrated Author Studio & Account Dropdown Menu (Hidden on mobile phones, accessible via hamburger drawer) */}
+          <div className="relative hidden md:block" ref={authorMenuRef}>
             <button
               type="button"
               id="navbar-author-account-dropdown-btn"
@@ -338,7 +354,30 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 )}
 
-                {/* Account Settings / Profile Option */}
+                {/* Edit Profile Option (Avatar, Nickname, Bio) */}
+                {user && (
+                  <button
+                    type="button"
+                    id="navbar-edit-profile-item"
+                    onClick={() => {
+                      setIsAuthorMenuOpen(false);
+                      openProfileModal();
+                    }}
+                    className="w-full text-left p-2.5 rounded-xl hover:bg-pink-50 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-100 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-pink-100 dark:bg-stone-750 text-pink-600 dark:text-pink-400 flex items-center justify-center shrink-0">
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold">Chỉnh sửa Hồ sơ cá nhân</div>
+                      <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
+                        Đổi avatar, bút danh, giới thiệu bản thân
+                      </div>
+                    </div>
+                  </button>
+                )}
+
+                {/* Account Settings / Auth Modal Option */}
                 <button
                   type="button"
                   id="navbar-account-profile-item"
@@ -349,14 +388,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="w-full text-left p-2.5 rounded-xl hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-100 flex items-center gap-2.5 transition-colors cursor-pointer"
                 >
                   <div className="w-7 h-7 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 flex items-center justify-center shrink-0">
-                    <UserIcon className="w-3.5 h-3.5" />
+                    <Settings className="w-3.5 h-3.5" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-semibold">
-                      {user ? 'Hồ sơ & Tài khoản' : 'Đăng nhập tài khoản'}
+                      {user ? 'Tài khoản & Bảo mật' : 'Đăng nhập tài khoản'}
                     </div>
                     <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
-                      {user ? 'Đổi biệt hiệu, xem thông tin tài khoản' : 'Đăng nhập Google / Email để gửi tâm tư'}
+                      {user ? 'Đổi mật khẩu, xem thông tin đăng nhập' : 'Đăng nhập Google / Email để gửi tâm tư'}
                     </div>
                   </div>
                 </button>
@@ -396,12 +435,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Search className="w-3.5 h-3.5" />
             </button>
 
-            {/* Background Music Toggle Button */}
+            {/* Background Music Toggle Button (Hidden on small mobile screens to prevent header crowding; accessible in drawer & floating bar) */}
             <button
               type="button"
               id="navbar-bgm-btn"
               onClick={handleToggleMusic}
-              className={`flex items-center justify-center w-7.5 h-7.5 sm:w-8 sm:h-8 rounded-lg transition-all cursor-pointer ${
+              className={`hidden sm:flex items-center justify-center w-7.5 h-7.5 sm:w-8 sm:h-8 rounded-lg transition-all cursor-pointer ${
                 isMusicPlaying
                   ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-2xs'
                   : 'text-stone-600 hover:text-pink-600 hover:bg-white dark:text-stone-300 dark:hover:bg-stone-700'
@@ -424,7 +463,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </button>
 
-            {/* Sakura Petals Toggle Button */}
+            {/* Falling Sakura Petals Toggle Button */}
             <button
               type="button"
               id="navbar-petals-toggle-btn"
@@ -471,212 +510,319 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </div>
 
-          {/* Mobile & Tablet Hamburger Menu Button (Visible on < xl: 1280px) */}
+          {/* Mobile & Tablet Hamburger Menu Button (xl:hidden) */}
           <button
             type="button"
             id="mobile-menu-toggle-btn"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="xl:hidden flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-stone-100 text-stone-700 hover:bg-pink-100/70 hover:text-pink-600 dark:bg-stone-800 dark:text-stone-200 dark:hover:bg-stone-700 border border-stone-200 dark:border-stone-700 cursor-pointer transition-colors"
+            className="xl:hidden flex items-center justify-center h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl bg-pink-50 text-pink-600 hover:bg-pink-100 dark:bg-stone-800 dark:text-pink-400 dark:hover:bg-stone-700 border border-pink-200/80 dark:border-stone-700 cursor-pointer transition-colors shadow-2xs gap-1.5"
             aria-label="Mở menu chuyển hướng"
             aria-expanded={isMobileMenuOpen}
           >
             {isMobileMenuOpen ? (
-              <X className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+              <X className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.5]" />
             ) : (
-              <Menu className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+              <>
+                {user && (
+                  <div className="w-5 h-5 rounded-full overflow-hidden bg-pink-200 dark:bg-pink-900 flex items-center justify-center text-[10px] font-bold text-pink-700 dark:text-pink-300 md:hidden">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{(user.displayName || user.email || 'M')[0].toUpperCase()}</span>
+                    )}
+                  </div>
+                )}
+                <Menu className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2]" />
+              </>
             )}
           </button>
         </div>
       </div>
+    </header>
 
-      {/* =================================================================== */}
-      {/* 4. RESPONSIVE MOBILE & TABLET DRAWER NAVIGATION (xl:hidden)         */}
-      {/* =================================================================== */}
-      {isMobileMenuOpen && (
-        <>
-          {/* Backdrop overlay to easily dismiss when tapping outside */}
+    {/* =================================================================== */}
+    {/* 4. RESPONSIVE MOBILE & TABLET DRAWER NAVIGATION (xl:hidden)         */}
+    {/* Mounted directly to document.body via Portal to prevent CSS squish  */}
+    {/* =================================================================== */}
+    {isMobileMenuOpen &&
+      typeof document !== 'undefined' &&
+      createPortal(
+        <div
+          id="mobile-drawer-portal"
+          data-theme={isDarkMode ? 'dark' : 'light'}
+          className={`${isDarkMode ? 'dark ' : ''}fixed inset-0 top-14 sm:top-16 z-[9999] xl:hidden flex flex-col`}
+        >
+          {/* Backdrop overlay */}
           <div
-            className="fixed inset-0 top-14 sm:top-16 bg-black/40 backdrop-blur-2xs z-40 xl:hidden"
+            className="fixed inset-0 top-14 sm:top-16 bg-stone-950/75 backdrop-blur-xs transition-opacity animate-in fade-in duration-150"
             onClick={() => setIsMobileMenuOpen(false)}
-            aria-hidden="true"
           />
 
+          {/* Drawer sheet with full viewport scroll */}
           <div
             id="mobile-drawer-nav"
-            className="relative z-50 xl:hidden border-t border-pink-100 dark:border-stone-800 bg-white/98 dark:bg-stone-900/98 px-3.5 sm:px-6 pt-3 pb-6 space-y-3 backdrop-blur-xl shadow-2xl animate-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-4rem)] overflow-y-auto"
+            className="relative z-10 w-full max-h-[calc(100dvh-3.5rem)] sm:max-h-[calc(100dvh-4rem)] bg-white dark:bg-stone-900 border-b border-pink-200 dark:border-stone-800 shadow-2xl p-4 sm:p-5 space-y-4 overflow-y-auto overscroll-contain text-stone-800 dark:text-stone-100 animate-in slide-in-from-top-2 duration-200"
           >
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[11px] font-semibold tracking-wider text-pink-600 dark:text-pink-400 uppercase">
-                Điều hướng blog Mellifluous
-              </span>
+            {/* Header in Drawer */}
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100 dark:border-stone-800">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🌸</span>
+                <span className="font-serif text-sm font-bold text-stone-800 dark:text-stone-100">
+                  Mục Lục & Tính Năng
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="text-[11px] text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 flex items-center gap-1 cursor-pointer"
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
               >
-                <span>Đóng</span>
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* All Navigation Links including Home */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {mobileNavItems.map((item) => {
-                const isActive = currentTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleSelect(item.id)}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-pink-100 text-pink-900 dark:bg-pink-950/70 dark:text-pink-200 font-semibold border border-pink-200 dark:border-pink-800 shadow-xs'
-                        : 'text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className={`shrink-0 ${
-                          isActive
-                            ? 'text-pink-600 dark:text-pink-400'
-                            : 'text-stone-400 dark:text-stone-500'
-                        }`}
-                      >
-                        {item.icon}
-                      </span>
-                      <span>{item.label}</span>
-                    </div>
-                    {item.badge && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-300 text-amber-950 rounded-full">
-                        {item.badge}
-                      </span>
+            {/* Mobile Account Profile / Studio Card */}
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-pink-50 via-rose-50/60 to-amber-50/50 dark:from-stone-850 dark:via-stone-900 dark:to-stone-850 border border-pink-200/90 dark:border-stone-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-10 h-10 rounded-full ring-2 ring-pink-300 dark:ring-pink-700 overflow-hidden bg-pink-200 dark:bg-pink-900 flex items-center justify-center font-bold text-sm shrink-0">
+                    {user?.photoURL ? (
+                      <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <UserIcon className="w-5 h-5 text-pink-700 dark:text-pink-300" />
                     )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Dedicated Media & Effects Control Cards inside Drawer */}
-            <div className="pt-2.5 border-t border-stone-200/80 dark:border-stone-800 space-y-2">
-              <div className="text-[10px] font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider px-1">
-                Tiện ích đọc truyện
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {/* Music Card Switch */}
-                <button
-                  type="button"
-                  onClick={handleToggleMusic}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
-                    isMusicPlaying
-                      ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-xs'
-                      : 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300 hover:bg-stone-200/70 dark:hover:bg-stone-700'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Music className="w-4 h-4 shrink-0" />
-                    <div className="text-left min-w-0">
-                      <div className="text-xs font-semibold truncate">
-                        {isMusicPlaying ? 'Đang phát nhạc nền ♪' : 'Nhạc nền mùa hè'}
-                      </div>
-                      <div className="text-[10px] opacity-80 truncate">
-                        {isMusicPlaying ? currentTrack.title : 'Bấm để bật giai điệu êm dịu'}
-                      </div>
-                    </div>
                   </div>
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/20 dark:bg-black/20 shrink-0">
-                    {isMusicPlaying ? 'Tạm dừng' : 'Bật'}
-                  </span>
-                </button>
-
-                {/* Petals Card Switch */}
-                <button
-                  type="button"
-                  onClick={onTogglePetals}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
-                    isPetalsEnabled
-                      ? 'bg-pink-100 text-pink-900 dark:bg-pink-950 dark:text-pink-200 border border-pink-200 dark:border-pink-800 font-semibold shadow-xs'
-                      : 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300 hover:bg-stone-200/70 dark:hover:bg-stone-700'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-sm select-none">🌸</span>
-                    <div className="text-left">
-                      <div className="text-xs font-semibold">Cánh hoa anh đào rơi</div>
-                      <div className="text-[10px] text-stone-500 dark:text-stone-400">
-                        {isPetalsEnabled ? 'Đang rơi bồng bềnh' : 'Đã tạm tắt hiệu ứng'}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/80 dark:bg-stone-900/80 shadow-2xs shrink-0">
-                    {isPetalsEnabled ? 'BẬT' : 'TẮT'}
-                  </span>
-                </button>
-              </div>
-
-              {/* Mobile Account Profile / Login Card */}
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    openAuthModal();
-                  }}
-                  className={`w-full flex items-center justify-between p-3 rounded-2xl border text-xs transition-all cursor-pointer ${
-                    user
-                      ? isAuthor
-                        ? 'bg-rose-50 dark:bg-pink-950/70 text-rose-800 dark:text-pink-300 border-rose-200 dark:border-pink-800/80 font-medium'
-                        : 'bg-stone-50 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700'
-                      : 'bg-gradient-to-r from-pink-500 to-rose-500 text-white font-medium shadow-xs'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-7 h-7 rounded-full bg-white/30 dark:bg-black/20 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
-                      {user?.photoURL ? (
-                        <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <span>{user ? (user.displayName || user.email || 'M')[0].toUpperCase() : '👤'}</span>
+                  <div className="min-w-0">
+                    <div className="font-serif text-sm font-bold text-stone-800 dark:text-stone-100 truncate flex items-center gap-1.5">
+                      <span>{user ? (user.displayName || 'Độc giả') : 'Chào bạn đọc'}</span>
+                      {user && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-pink-500 text-white font-sans font-medium">
+                          {user.roleBadge || (isAuthor ? 'Tác giả' : 'Bạn đọc')}
+                        </span>
                       )}
                     </div>
-                    <div className="text-left truncate">
-                      <div className="font-semibold truncate">
-                        {user ? (isAuthor ? '🌸 Mellifluous (Tác giả)' : (user.displayName || 'Độc giả')) : 'Đăng nhập tài khoản'}
-                      </div>
-                      <div className="text-[10px] opacity-80 truncate">
-                        {user ? user.email : 'Đăng nhập Gmail để bình luận & gửi tâm tư'}
-                      </div>
+                    <div className="text-[11px] text-stone-500 dark:text-stone-400 font-mono truncate">
+                      {user ? user.email : 'Đăng nhập để bình luận & gửi thư'}
                     </div>
                   </div>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/25 shrink-0">
-                    {user ? 'Tài khoản' : 'Đăng nhập'}
-                  </span>
-                </button>
+                </div>
+
+                {!user && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      openAuthModal();
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-bold shrink-0 cursor-pointer shadow-2xs"
+                  >
+                    Đăng nhập
+                  </button>
+                )}
               </div>
 
-              {/* Author Publishing Studio Button in Mobile Drawer - ONLY FOR AUTHORS */}
+              {/* Action buttons inside Account Card */}
+              {user && (
+                <div className="flex items-center gap-2 pt-1 border-t border-pink-100/70 dark:border-stone-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      openProfileModal();
+                    }}
+                    className="flex-1 py-1.5 px-2.5 rounded-xl bg-white dark:bg-stone-800 text-pink-600 dark:text-pink-300 text-xs font-semibold border border-pink-200 dark:border-stone-700 hover:bg-pink-50 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Sửa hồ sơ & Avatar</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      logout();
+                    }}
+                    className="py-1.5 px-3 rounded-xl bg-rose-100/70 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-xs font-medium hover:bg-rose-200/70 flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Thoát</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Author Studio Shortcut if Author */}
               {isAuthor && onOpenAuthorModal && (
                 <button
                   type="button"
-                  id="mobile-author-studio-btn"
+                  id="mobile-drawer-author-studio-btn"
                   onClick={() => {
                     setIsMobileMenuOpen(false);
                     onOpenAuthorModal();
                   }}
-                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 text-white font-medium text-xs shadow-sm mt-2 cursor-pointer"
+                  className="w-full py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 text-white font-bold text-xs shadow-xs flex items-center justify-between cursor-pointer"
                 >
-                  <span className="flex items-center gap-2 font-serif font-bold">
-                    <span>🌸</span>
+                  <span className="flex items-center gap-2">
+                    <PenTool className="w-4 h-4" />
                     <span>Bàn làm việc Tác giả & Xuất bản</span>
                   </span>
-                  <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-mono">
-                    Quản trị
+                  <span className="text-[10px] bg-white/25 px-2 py-0.5 rounded-full font-mono">
+                    Studio
                   </span>
                 </button>
               )}
             </div>
+
+            {/* Quick Search Shortcut in Drawer */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                onOpenSearch();
+              }}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-stone-100/80 dark:bg-stone-850 hover:bg-pink-50 dark:hover:bg-stone-800 border border-stone-200/80 dark:border-stone-700/80 text-stone-600 dark:text-stone-300 text-xs font-medium transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <Search className="w-3.5 h-3.5 text-pink-500" />
+                <span>Tìm kiếm truyện & mật khẩu (Password)...</span>
+              </div>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-stone-500">
+                Tìm
+              </span>
+            </button>
+
+            {/* Navigation Links Grid with High Visibility */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider px-1">
+                Các chuyên mục truyện
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {mobileNavItems.map((item) => {
+                  const isActive = currentTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      id={`mobile-menu-item-${item.id}`}
+                      onClick={() => handleSelect(item.id)}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-pink-500 text-white shadow-xs scale-[1.01]'
+                          : 'bg-stone-50 hover:bg-pink-50 dark:bg-stone-850 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200/80 dark:border-stone-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                            isActive
+                              ? 'bg-white/20 text-white'
+                              : 'bg-white dark:bg-stone-800 text-pink-600 dark:text-pink-400 shadow-2xs'
+                          }`}
+                        >
+                          {item.icon}
+                        </span>
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isActive ? 'bg-white text-pink-700' : 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Media & Effect Controls in Drawer */}
+            <div className="pt-2 border-t border-stone-100 dark:border-stone-800 space-y-2">
+              <span className="text-[10px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider px-1">
+                Tiện ích trải nghiệm
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {/* Music Card Switch */}
+                <button
+                  type="button"
+                  onClick={handleToggleMusic}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                    isMusicPlaying
+                      ? 'bg-pink-100/80 dark:bg-pink-950/70 border-pink-300 dark:border-pink-800 text-pink-900 dark:text-pink-200'
+                      : 'bg-stone-50 dark:bg-stone-850 border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Music className="w-4 h-4 text-pink-500 shrink-0" />
+                    <div className="text-left min-w-0">
+                      <div className="truncate font-bold">
+                        {isMusicPlaying ? 'Đang phát nhạc' : 'Nhạc nền'}
+                      </div>
+                      <div className="text-[10px] opacity-75 font-normal truncate">
+                        {isMusicPlaying ? currentTrack.title : 'Chạm để nghe'}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-pink-500 text-white shrink-0">
+                    {isMusicPlaying ? 'Tắt' : 'Bật'}
+                  </span>
+                </button>
+
+                {/* Petals Switch */}
+                <button
+                  type="button"
+                  onClick={onTogglePetals}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                    isPetalsEnabled
+                      ? 'bg-pink-100/80 dark:bg-pink-950/70 border-pink-300 dark:border-pink-800 text-pink-900 dark:text-pink-200'
+                      : 'bg-stone-50 dark:bg-stone-850 border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-base select-none">🌸</span>
+                    <div className="text-left">
+                      <div className="font-bold">Hoa anh đào</div>
+                      <div className="text-[10px] opacity-75 font-normal">
+                        {isPetalsEnabled ? 'Đang rơi' : 'Tạm tắt'}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-pink-500 text-white shrink-0">
+                    {isPetalsEnabled ? 'Tắt' : 'Bật'}
+                  </span>
+                </button>
+
+                {/* Theme Mode Switch */}
+                <button
+                  type="button"
+                  onClick={onToggleDarkMode}
+                  className="w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold transition-all cursor-pointer border bg-stone-50 dark:bg-stone-850 border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-300 hover:bg-pink-50 dark:hover:bg-stone-800"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {isDarkMode ? (
+                      <Sun className="w-4 h-4 text-amber-400" />
+                    ) : (
+                      <Moon className="w-4 h-4 text-stone-600" />
+                    )}
+                    <div className="text-left">
+                      <div className="font-bold">Giao diện</div>
+                      <div className="text-[10px] opacity-75 font-normal">
+                        {isDarkMode ? 'Đêm ngắm sao' : 'Ban ngày'}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-pink-500 text-white shrink-0">
+                    {isDarkMode ? 'Sáng' : 'Tối'}
+                  </span>
+                </button>
+              </div>
+            </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
-    </header>
+    </>
   );
 };

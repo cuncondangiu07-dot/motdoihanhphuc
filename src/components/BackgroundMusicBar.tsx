@@ -118,7 +118,7 @@ export const BackgroundMusicBar: React.FC<BackgroundMusicBarProps> = ({ onOpenAu
   return (
     <div
       id="bgm-player-widget"
-      className="fixed bottom-4 left-3 sm:left-6 z-40 transition-all duration-300 select-none"
+      className="fixed bottom-4 sm:bottom-6 left-3 sm:left-6 z-40 transition-all duration-300 select-none"
     >
       {/* Hidden background iframe for SoundCloud / YouTube / Google Drive streaming */}
       {isPlaying && embedUrl && (sourceType === 'soundcloud' || sourceType === 'youtube' || sourceType === 'gdrive') && (

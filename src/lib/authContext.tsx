@@ -10,8 +10,18 @@ import {
   updateProfile,
   User,
 } from './firebase';
+import { CollaboratorItem, UserProfile } from '../types';
+import {
+  subscribeToCollaborators,
+  addCollaborator,
+  deleteCollaborator,
+  updateCollaboratorRole,
+  getUserProfile,
+  saveUserProfile,
+  subscribeToUserProfile,
+} from './realtimeService';
 
-// Danh sách email chính thức của Tác giả & Các Cộng sự quản trị viên do khách hàng cung cấp
+// Danh sách email chính thức ban đầu của Tác giả & Các Cộng sự quản trị viên
 export const AUTHOR_EMAILS: string[] = [
   'cuncondangiu07@gmail.com',
   'meomeoxinhxinh07@gmail.com',
@@ -30,10 +40,13 @@ export interface AppUser {
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
+  bio?: string | null;
+  favoriteGenre?: string | null;
+  websiteOrSocial?: string | null;
   isAuthor: boolean;
   isMainAuthor: boolean;
   isCollaborator: boolean;
-  role: 'author' | 'collaborator' | 'reader';
+  role: 'author' | 'admin' | 'collaborator' | 'editor' | 'reader';
   roleTitle: string;
   roleBadge: string;
 }
@@ -47,6 +60,14 @@ interface AuthContextType {
   isAuthModalOpen: boolean;
   openAuthModal: () => void;
   closeAuthModal: () => void;
+  isProfileModalOpen: boolean;
+  openProfileModal: () => void;
+  closeProfileModal: () => void;
+  collaboratorsList: CollaboratorItem[];
+  addCollaboratorByEmail: (email: string, displayName: string, role: CollaboratorItem['role'], note?: string) => Promise<void>;
+  removeCollaborator: (collabId: string) => Promise<void>;
+  updateCollaboratorRoleByAdmin: (collabId: string, role: CollaboratorItem['role'], roleTitle?: string) => Promise<void>;
+  updateUserProfileData: (data: Partial<UserProfile>) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
@@ -66,41 +87,67 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return null;
   });
 
+  const [collaboratorsList, setCollaboratorsList] = useState<CollaboratorItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // Helper to construct normalized AppUser object with author privilege verification
-  const buildAppUser = (fbUser: User | { uid: string; email?: string | null; displayName?: string | null; photoURL?: string | null }): AppUser => {
+  // Subscribe to real-time collaborators from Firestore
+  useEffect(() => {
+    const unsub = subscribeToCollaborators((list) => {
+      setCollaboratorsList(list);
+    });
+    return unsub;
+  }, []);
+
+  // Helper to construct normalized AppUser object with dynamic collaborator privilege check
+  const buildAppUser = (
+    fbUser: User | { uid: string; email?: string | null; displayName?: string | null; photoURL?: string | null },
+    collaborators: CollaboratorItem[] = collaboratorsList,
+    profileOverride?: Partial<UserProfile> | null
+  ): AppUser => {
     const emailLower = (fbUser.email || '').toLowerCase().trim();
-    const isAuthor = AUTHOR_EMAILS.includes(emailLower);
+    const isDefaultAuthor = AUTHOR_EMAILS.includes(emailLower);
+    const matchedCollab = collaborators.find((c) => c.email.toLowerCase().trim() === emailLower);
 
-    const isMainAuthor = isAuthor && (
-      emailLower === 'cuncondangiu07@gmail.com' ||
-      emailLower === 'meomeoxinhxinh07@gmail.com' ||
-      emailLower === 'nhatlinhpham010194@gmail.com' ||
-      emailLower === 'maianhpham927@gmail.com'
-    );
+    const isAuthor = isDefaultAuthor || Boolean(matchedCollab);
+    const isMainAuthor =
+      isDefaultAuthor &&
+      (emailLower === 'cuncondangiu07@gmail.com' ||
+        emailLower === 'meomeoxinhxinh07@gmail.com' ||
+        emailLower === 'nhatlinhpham010194@gmail.com' ||
+        emailLower === 'maianhpham927@gmail.com');
     const isCollaborator = isAuthor && !isMainAuthor;
 
     let roleTitle = 'Độc giả yêu mến';
     let roleBadge = 'Độc giả';
-    let role: 'author' | 'collaborator' | 'reader' = 'reader';
+    let role: 'author' | 'admin' | 'collaborator' | 'editor' | 'reader' = 'reader';
 
     if (isMainAuthor) {
       roleTitle = 'Tác giả • Mellifluous';
       roleBadge = 'Tác giả';
       role = 'author';
+    } else if (matchedCollab) {
+      role = matchedCollab.role;
+      roleTitle = matchedCollab.roleTitle || (matchedCollab.role === 'admin' ? 'Quản trị viên' : matchedCollab.role === 'author' ? 'Đồng tác giả' : matchedCollab.role === 'editor' ? 'Biên tập viên' : 'Cộng sự BQT');
+      roleBadge = matchedCollab.role === 'admin' ? 'Quản trị' : matchedCollab.role === 'author' ? 'Tác giả' : matchedCollab.role === 'editor' ? 'Editor' : 'Cộng sự';
     } else if (isCollaborator) {
       roleTitle = 'Cộng sự • Ban quản trị';
       roleBadge = 'Cộng sự';
       role = 'collaborator';
     }
 
+    const finalDisplayName = profileOverride?.displayName || fbUser.displayName || (isMainAuthor ? 'Mellifluous (Tác giả)' : isCollaborator ? 'Cộng sự BQT' : 'Độc giả thân thương');
+    const finalPhotoURL = profileOverride?.photoURL !== undefined ? profileOverride.photoURL : fbUser.photoURL || null;
+
     return {
       uid: fbUser.uid,
       email: fbUser.email || null,
-      displayName: fbUser.displayName || (isMainAuthor ? 'Mellifluous (Tác giả)' : isCollaborator ? 'Cộng sự BQT' : 'Độc giả giấu tên'),
-      photoURL: fbUser.photoURL || null,
+      displayName: finalDisplayName,
+      photoURL: finalPhotoURL,
+      bio: profileOverride?.bio || null,
+      favoriteGenre: profileOverride?.favoriteGenre || null,
+      websiteOrSocial: profileOverride?.websiteOrSocial || null,
       isAuthor,
       isMainAuthor,
       isCollaborator,
@@ -110,16 +157,71 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   };
 
+  // Re-verify roles when collaboratorsList updates
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+    if (user && user.email) {
+      const updatedUser = buildAppUser(user, collaboratorsList, {
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+        bio: user.bio,
+        favoriteGenre: user.favoriteGenre,
+        websiteOrSocial: user.websiteOrSocial,
+      });
+      // Only update if role status changed
+      if (
+        updatedUser.isAuthor !== user.isAuthor ||
+        updatedUser.role !== user.role ||
+        updatedUser.roleTitle !== user.roleTitle
+      ) {
+        setUser(updatedUser);
+        try {
+          localStorage.setItem('mel_user_session', JSON.stringify(updatedUser));
+        } catch {}
+      }
+    }
+  }, [collaboratorsList]);
+
+  // Auth listener & live profile sync
+  useEffect(() => {
+    let profileUnsub: (() => void) | null = null;
+
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
-        const appUser = buildAppUser(fbUser);
+        // Fetch saved profile from Firestore/local
+        const savedProfile = await getUserProfile(fbUser.uid);
+        const appUser = buildAppUser(fbUser, collaboratorsList, savedProfile);
         setUser(appUser);
         try {
           localStorage.setItem('mel_user_session', JSON.stringify(appUser));
         } catch {}
+
+        // Listen to profile updates
+        profileUnsub = subscribeToUserProfile(fbUser.uid, (latestProfile) => {
+          if (latestProfile) {
+            setUser((prev) => {
+              if (!prev) return null;
+              const merged = buildAppUser(
+                {
+                  uid: prev.uid,
+                  email: prev.email,
+                  displayName: latestProfile.displayName || prev.displayName,
+                  photoURL: latestProfile.photoURL || prev.photoURL,
+                },
+                collaboratorsList,
+                latestProfile
+              );
+              try {
+                localStorage.setItem('mel_user_session', JSON.stringify(merged));
+              } catch {}
+              return merged;
+            });
+          }
+        });
       } else {
-        // Only clear if not using a manual author session in preview
+        if (profileUnsub) {
+          profileUnsub();
+          profileUnsub = null;
+        }
         try {
           const saved = localStorage.getItem('mel_user_session');
           if (!saved) {
@@ -132,18 +234,105 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (profileUnsub) profileUnsub();
+    };
   }, []);
 
   const openAuthModal = () => setIsAuthModalOpen(true);
   const closeAuthModal = () => setIsAuthModalOpen(false);
+
+  const openProfileModal = () => setIsProfileModalOpen(true);
+  const closeProfileModal = () => setIsProfileModalOpen(false);
+
+  // Update profile handler (avatar, bio, display name, etc.)
+  const updateUserProfileData = async (data: Partial<UserProfile>) => {
+    if (!user) return;
+    const updatedProfile: UserProfile = {
+      uid: user.uid,
+      email: user.email,
+      displayName: (data.displayName || user.displayName || 'Độc giả').trim(),
+      photoURL: data.photoURL !== undefined ? data.photoURL : user.photoURL,
+      bio: data.bio !== undefined ? data.bio : user.bio || '',
+      favoriteGenre: data.favoriteGenre !== undefined ? data.favoriteGenre : user.favoriteGenre || '',
+      websiteOrSocial: data.websiteOrSocial !== undefined ? data.websiteOrSocial : user.websiteOrSocial || '',
+      role: user.role,
+      roleTitle: user.roleTitle,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Firebase Auth profile update
+    if (auth.currentUser) {
+      await updateProfile(auth.currentUser, {
+        displayName: updatedProfile.displayName,
+        photoURL: updatedProfile.photoURL || undefined,
+      }).catch(() => {});
+    }
+
+    // 2. Firestore & localStorage persistence
+    await saveUserProfile(updatedProfile);
+
+    // 3. Local React state
+    const newAppUser = buildAppUser(
+      {
+        uid: user.uid,
+        email: user.email,
+        displayName: updatedProfile.displayName,
+        photoURL: updatedProfile.photoURL,
+      },
+      collaboratorsList,
+      updatedProfile
+    );
+    setUser(newAppUser);
+    try {
+      localStorage.setItem('mel_user_session', JSON.stringify(newAppUser));
+    } catch {}
+  };
+
+  // Collaborator management functions
+  const addCollaboratorByEmail = async (
+    email: string,
+    displayName: string,
+    role: CollaboratorItem['role'],
+    note?: string
+  ) => {
+    const roleTitleMap: Record<CollaboratorItem['role'], string> = {
+      author: 'Đồng tác giả / Tác giả',
+      admin: 'Quản trị viên hệ thống',
+      collaborator: 'Cộng sự Ban quản trị',
+      editor: 'Biên tập viên / Editor',
+    };
+
+    await addCollaborator({
+      email,
+      displayName: displayName.trim() || email.split('@')[0],
+      role,
+      roleTitle: roleTitleMap[role],
+      addedBy: user?.displayName || user?.email || 'Tác giả chính',
+      note: note || '',
+    });
+  };
+
+  const removeCollaborator = async (collabId: string) => {
+    await deleteCollaborator(collabId);
+  };
+
+  const updateCollaboratorRoleByAdmin = async (
+    collabId: string,
+    role: CollaboratorItem['role'],
+    roleTitle?: string
+  ) => {
+    await updateCollaboratorRole(collabId, role, roleTitle);
+  };
 
   // Sign in with Google Popup
   const signInWithGoogle = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
-        const appUser = buildAppUser(result.user);
+        const savedProfile = await getUserProfile(result.user.uid);
+        const appUser = buildAppUser(result.user, collaboratorsList, savedProfile);
         setUser(appUser);
         try {
           localStorage.setItem('mel_user_session', JSON.stringify(appUser));
@@ -152,7 +341,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       closeAuthModal();
     } catch (err: any) {
       console.error('Google Sign-In error:', err);
-      // In case iframe blocks popup or third-party cookies:
       throw err;
     }
   };
@@ -162,7 +350,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const result = await signInWithEmailAndPassword(auth, email.trim(), pass);
       if (result.user) {
-        const appUser = buildAppUser(result.user);
+        const savedProfile = await getUserProfile(result.user.uid);
+        const appUser = buildAppUser(result.user, collaboratorsList, savedProfile);
         setUser(appUser);
         try {
           localStorage.setItem('mel_user_session', JSON.stringify(appUser));
@@ -187,7 +376,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           ...result.user,
           displayName: name.trim() || result.user.displayName,
         };
-        const appUser = buildAppUser(updatedUser);
+        const appUser = buildAppUser(updatedUser, collaboratorsList);
         setUser(appUser);
         try {
           localStorage.setItem('mel_user_session', JSON.stringify(appUser));
@@ -200,7 +389,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Quick switch / Direct sign-in for Author & Collaborators (ideal for testing in sandboxed iframe or direct access)
+  // Quick switch / Direct sign-in for Author & Collaborators
   const quickAuthorLogin = (authorEmail: string) => {
     const cleanEmail = authorEmail.toLowerCase().trim();
     const isMain =
@@ -229,7 +418,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     closeAuthModal();
   };
 
-  // Quick sign-in for Readers / Guests (allows immediate reading & commenting with nickname)
+  // Quick sign-in for Readers / Guests
   const quickReaderLogin = (nickname: string) => {
     const trimmed = nickname.trim() || 'Bạn đọc thân thương';
     const appUser: AppUser = {
@@ -273,6 +462,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isAuthModalOpen,
         openAuthModal,
         closeAuthModal,
+        isProfileModalOpen,
+        openProfileModal,
+        closeProfileModal,
+        collaboratorsList,
+        addCollaboratorByEmail,
+        removeCollaborator,
+        updateCollaboratorRoleByAdmin,
+        updateUserProfileData,
         signInWithGoogle,
         signInWithEmail,
         registerWithEmail,
@@ -293,3 +490,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Bell,
   ChevronDown,
+  ChevronUp,
   Clock,
   Sparkles,
   Volume2,
@@ -60,16 +61,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setActiveQuoteIndex((prev) => (prev + 1) % SUMMER_QUOTES.length);
   };
 
-  const activeNotice = announcements.find((a) => a.isPinned) || announcements[0];
+  const [showOlderAnnouncements, setShowOlderAnnouncements] = useState(false);
+
+  // Sắp xếp thông báo: Đang ghim lên trước, sau đó theo thứ tự mảng/thời gian
+  const sortedAnnouncements = [...announcements].sort((a, b) => {
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    return 0;
+  });
+
+  const INITIAL_VISIBLE_COUNT = 3;
+  const displayedAnnouncements = showOlderAnnouncements
+    ? sortedAnnouncements
+    : sortedAnnouncements.slice(0, INITIAL_VISIBLE_COUNT);
+  const olderCount = Math.max(0, sortedAnnouncements.length - INITIAL_VISIBLE_COUNT);
 
   return (
     <aside id="blog-right-sidebar" className="space-y-6 w-full">
-      {/* 1. SECTION: THÔNG BÁO CHÍNH (Đoạn văn thông báo các thông báo chính) */}
-      <div className="relative p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-pink-50/90 via-rose-50/60 to-amber-50/80 dark:from-stone-800 dark:via-stone-800/90 dark:to-pink-950/30 border border-pink-200/80 dark:border-stone-700/80 shadow-xs">
+      {/* 1. SECTION: BẢNG TIN NHÀ MEL (Hiển thị thông báo mới & cũ, ít nhất 3 thông báo gần nhất) */}
+      <div className="relative p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-pink-50/90 via-rose-50/60 to-amber-50/80 dark:from-stone-800 dark:via-stone-800/90 dark:to-pink-950/30 border border-pink-200/80 dark:border-stone-700/80 shadow-xs space-y-3.5">
         {/* Washi tape decoration */}
         <div className="absolute -top-2.5 left-8 w-16 h-4 bg-pink-300/80 dark:bg-pink-700/70 rotate-[-2deg] rounded-xs shadow-2xs border-y border-white/60" />
 
-        <div className="flex items-center justify-between mb-3">
+        {/* Board Header */}
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400">
               <Bell className="w-4 h-4 animate-bounce" />
@@ -79,22 +94,92 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Pin className="w-3.5 h-3.5 text-pink-500" />
             </h3>
           </div>
-          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-pink-200/70 text-pink-900 dark:bg-pink-900/60 dark:text-pink-200">
-            {activeNotice.date}
+          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-pink-200/70 text-pink-900 dark:bg-pink-900/60 dark:text-pink-200 font-medium">
+            {announcements.length} thông báo
           </span>
         </div>
 
-        <div className="space-y-2">
-          <h4 className="font-serif text-sm font-semibold text-pink-900 dark:text-pink-200 leading-snug">
-            {activeNotice.title}
-          </h4>
-          <p className="text-xs sm:text-[13px] leading-relaxed text-stone-700 dark:text-stone-300 font-sans">
-            {activeNotice.content}
-          </p>
+        {/* Announcements List */}
+        <div className="space-y-2.5">
+          {displayedAnnouncements.map((notice, idx) => {
+            const isOlder = idx >= INITIAL_VISIBLE_COUNT;
+            return (
+              <div
+                key={notice.id}
+                className={`p-3 rounded-xl transition-all ${
+                  notice.isPinned
+                    ? 'bg-white/95 dark:bg-stone-850 border border-pink-200 dark:border-stone-700 shadow-2xs'
+                    : isOlder
+                    ? 'bg-stone-50/90 dark:bg-stone-850/60 border border-dashed border-stone-200 dark:border-stone-700/80'
+                    : 'bg-white/80 dark:bg-stone-850/80 border border-pink-100/90 dark:border-stone-800 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1.5 mb-1.5 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    {notice.isPinned && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 flex items-center gap-0.5">
+                        <Pin className="w-2.5 h-2.5" />
+                        <span>Đang ghim</span>
+                      </span>
+                    )}
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.2 rounded-full ${
+                        notice.tag === 'Lưu ý'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
+                          : notice.tag === 'Lịch đăng'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                          : 'bg-pink-100 text-pink-800 dark:bg-pink-950 dark:text-pink-200'
+                      }`}
+                    >
+                      {notice.tag}
+                    </span>
+                    {isOlder && (
+                      <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-stone-200/80 dark:bg-stone-750 text-stone-600 dark:text-stone-300">
+                        Cũ hơn
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-mono text-stone-500 dark:text-stone-400 flex items-center gap-1 shrink-0">
+                    <Clock className="w-3 h-3" />
+                    <span>{notice.date}</span>
+                  </span>
+                </div>
+
+                <h4 className="font-serif text-xs sm:text-sm font-bold text-stone-900 dark:text-stone-100 leading-snug">
+                  {notice.title}
+                </h4>
+                <p className="mt-1 text-xs text-stone-700 dark:text-stone-300 font-sans leading-relaxed whitespace-pre-line">
+                  {notice.content}
+                </p>
+              </div>
+            );
+          })}
         </div>
 
+        {/* Nút Xem thêm để hiện các thông báo cũ hơn */}
+        {olderCount > 0 && (
+          <button
+            type="button"
+            id="toggle-older-announcements-btn"
+            onClick={() => setShowOlderAnnouncements((prev) => !prev)}
+            className="w-full py-2 px-3 rounded-xl bg-white/90 dark:bg-stone-850 hover:bg-pink-100/70 dark:hover:bg-stone-800 border border-pink-200 dark:border-stone-700 text-pink-700 dark:text-pink-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+          >
+            {showOlderAnnouncements ? (
+              <>
+                <ChevronUp className="w-3.5 h-3.5" />
+                <span>Thu gọn bảng tin</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3.5 h-3.5" />
+                <span>Xem thêm để hiện các thông báo cũ hơn ({olderCount})</span>
+              </>
+            )}
+          </button>
+        )}
+
         {/* Small note reminder */}
-        <div className="mt-3 pt-3 border-t border-pink-200/60 dark:border-stone-700/60 flex items-center justify-between text-[11px] text-stone-500 dark:text-stone-400">
+        <div className="pt-2 border-t border-pink-200/60 dark:border-stone-700/60 flex items-center justify-between text-[11px] text-stone-500 dark:text-stone-400">
           <span className="font-serif italic">Mellifluous 🌸 Thuyền nhỏ</span>
           <span className="text-pink-600 dark:text-pink-400 font-medium">Phi thương mại</span>
         </div>

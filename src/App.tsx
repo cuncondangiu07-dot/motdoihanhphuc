@@ -19,6 +19,7 @@ import { HomePasswordSection } from './components/HomePasswordSection';
 import { HomeOtherSection } from './components/HomeOtherSection';
 import { SearchModal } from './components/SearchModal';
 import { AuthModal } from './components/AuthModal';
+import { ProfileEditModal } from './components/ProfileEditModal';
 import { Footer } from './components/Footer';
 import { BackgroundMusicBar } from './components/BackgroundMusicBar';
 import { SakuraPetals } from './components/SakuraPetals';
@@ -750,6 +751,9 @@ export default function App() {
 
       {/* Global Authentication Modal (Login / Register / Fast Author & Reader Access) */}
       <AuthModal />
+
+      {/* User Profile Edit Modal (Change Avatar, Pen Name, Bio, Favorite Genre) */}
+      <ProfileEditModal />
 
       {/* Global Background Music Player Widget */}
       <BackgroundMusicBar onOpenAuthorStudio={() => setIsAuthorModalOpen(true)} />

@@ -10,6 +10,8 @@ import {
   Pin,
   Clock,
   RotateCcw,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { publishAnnouncement, deleteAnnouncement } from '../../lib/realtimeService';
 
@@ -33,6 +35,7 @@ export const AuthorAnnouncementsTab: React.FC<AuthorAnnouncementsTabProps> = ({
   const [isPinned, setIsPinned] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [filterMode, setFilterMode] = useState<'all' | 'featured' | 'older'>('all');
 
   const handleStartEdit = (ann: Announcement) => {
     setEditingAnnId(ann.id);
@@ -193,10 +196,54 @@ export const AuthorAnnouncementsTab: React.FC<AuthorAnnouncementsTabProps> = ({
       </div>
 
       {/* Existing Announcements List with Edit/Delete */}
-      <div className="space-y-3">
-        <h4 className="text-xs font-bold text-stone-800 dark:text-stone-100 uppercase tracking-wider">
-          Danh sách thông báo trước đó ({announcements.length})
-        </h4>
+      <div className="space-y-3 pt-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h4 className="text-xs font-bold text-stone-800 dark:text-stone-100 uppercase tracking-wider flex items-center gap-2">
+            <span>Danh sách thông báo</span>
+            <span className="px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950 text-pink-700 dark:text-pink-300 text-[11px] font-mono">
+              {announcements.length} thông báo
+            </span>
+          </h4>
+
+          {/* Filter tabs: Tất cả / 3 nổi bật / Cũ hơn */}
+          <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-800 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setFilterMode('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                filterMode === 'all'
+                  ? 'bg-white dark:bg-stone-700 text-pink-600 dark:text-pink-300 shadow-2xs'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+              }`}
+            >
+              Tất cả ({announcements.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterMode('featured')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                filterMode === 'featured'
+                  ? 'bg-white dark:bg-stone-700 text-pink-600 dark:text-pink-300 shadow-2xs'
+                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+              }`}
+            >
+              3 thông báo mới ({Math.min(3, announcements.length)})
+            </button>
+            {announcements.length > 3 && (
+              <button
+                type="button"
+                onClick={() => setFilterMode('older')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                  filterMode === 'older'
+                    ? 'bg-white dark:bg-stone-700 text-pink-600 dark:text-pink-300 shadow-2xs'
+                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+                }`}
+              >
+                Cũ hơn ({announcements.length - 3})
+              </button>
+            )}
+          </div>
+        </div>
 
         {announcements.length === 0 ? (
           <div className="p-6 text-center rounded-xl bg-stone-50 dark:bg-stone-800/40 border border-stone-200 dark:border-stone-700 text-xs text-stone-500 dark:text-stone-400">
@@ -204,84 +251,103 @@ export const AuthorAnnouncementsTab: React.FC<AuthorAnnouncementsTabProps> = ({
           </div>
         ) : (
           <div className="space-y-2.5">
-            {announcements.map((ann) => (
-              <div
-                key={ann.id}
-                className={`p-4 rounded-2xl border transition-all ${
-                  editingAnnId === ann.id
-                    ? 'border-pink-500 bg-pink-50/50 dark:bg-pink-950/20 ring-2 ring-pink-200'
-                    : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 hover:border-pink-200'
-                }`}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950 text-pink-700 dark:text-pink-300">
-                        {ann.tag}
-                      </span>
-                      {ann.isPinned && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 flex items-center gap-0.5">
-                          <Pin className="w-2.5 h-2.5" />
-                          <span>Đang ghim</span>
-                        </span>
-                      )}
-                      <span className="text-[11px] text-stone-400 font-mono flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{ann.date}</span>
-                      </span>
-                    </div>
+            {announcements
+              .map((ann, originalIdx) => ({ ann, originalIdx }))
+              .filter(({ originalIdx }) => {
+                if (filterMode === 'featured') return originalIdx < 3;
+                if (filterMode === 'older') return originalIdx >= 3;
+                return true;
+              })
+              .map(({ ann, originalIdx }) => {
+                const isFeatured = originalIdx < 3;
+                return (
+                  <div
+                    key={ann.id}
+                    className={`p-4 rounded-2xl border transition-all ${
+                      editingAnnId === ann.id
+                        ? 'border-pink-500 bg-pink-50/50 dark:bg-pink-950/20 ring-2 ring-pink-200'
+                        : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 hover:border-pink-200'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950 text-pink-700 dark:text-pink-300">
+                            {ann.tag}
+                          </span>
+                          {ann.isPinned && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 flex items-center gap-0.5">
+                              <Pin className="w-2.5 h-2.5" />
+                              <span>Đang ghim</span>
+                            </span>
+                          )}
+                          {isFeatured ? (
+                            <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200 dark:bg-pink-950/60 dark:text-pink-300 dark:border-pink-800">
+                              ★ Hiển thị bảng tin chính
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200 dark:bg-stone-800 dark:text-stone-400 dark:border-stone-700">
+                              📜 Nằm trong mục &quot;Xem thêm&quot;
+                            </span>
+                          )}
+                          <span className="text-[11px] text-stone-400 font-mono flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>{ann.date}</span>
+                          </span>
+                        </div>
 
-                    <h5 className="font-serif text-sm font-bold text-stone-900 dark:text-stone-100">
-                      {ann.title}
-                    </h5>
+                        <h5 className="font-serif text-sm font-bold text-stone-900 dark:text-stone-100">
+                          {ann.title}
+                        </h5>
 
-                    <p className="text-xs text-stone-700 dark:text-stone-200 leading-relaxed whitespace-pre-line">
-                      {ann.content}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-start">
-                    <button
-                      type="button"
-                      onClick={() => handleStartEdit(ann)}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-stone-700 dark:text-stone-200 bg-stone-100 dark:bg-stone-700 hover:bg-pink-100 dark:hover:bg-pink-950 hover:text-pink-700 dark:hover:text-pink-300 flex items-center gap-1 cursor-pointer transition-colors"
-                      title="Chỉnh sửa thông báo này"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                      <span>Sửa</span>
-                    </button>
-
-                    {deletingId === ann.id ? (
-                      <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/60 p-1 rounded-lg border border-rose-200">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(ann.id, ann.title)}
-                          className="px-2 py-1 rounded text-[10px] font-bold bg-rose-500 text-white cursor-pointer"
-                        >
-                          Xóa
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingId(null)}
-                          className="px-1.5 py-1 rounded text-[10px] text-stone-600 hover:bg-stone-200 cursor-pointer"
-                        >
-                          Hủy
-                        </button>
+                        <p className="text-xs text-stone-700 dark:text-stone-200 leading-relaxed whitespace-pre-line">
+                          {ann.content}
+                        </p>
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setDeletingId(ann.id)}
-                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
-                        title="Xóa thông báo"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+
+                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-start">
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(ann)}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-stone-700 dark:text-stone-200 bg-stone-100 dark:bg-stone-700 hover:bg-pink-100 dark:hover:bg-pink-950 hover:text-pink-700 dark:hover:text-pink-300 flex items-center gap-1 cursor-pointer transition-colors"
+                          title="Chỉnh sửa thông báo này"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>Sửa</span>
+                        </button>
+
+                        {deletingId === ann.id ? (
+                          <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/60 p-1 rounded-lg border border-rose-200">
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(ann.id, ann.title)}
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-rose-500 text-white cursor-pointer"
+                            >
+                              Xóa
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingId(null)}
+                              className="px-1.5 py-1 rounded text-[10px] text-stone-600 hover:bg-stone-200 cursor-pointer"
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingId(ann.id)}
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
+                            title="Xóa thông báo"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
           </div>
         )}
       </div>

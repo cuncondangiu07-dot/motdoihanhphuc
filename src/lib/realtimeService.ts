@@ -17,8 +17,8 @@ import {
   addDoc,
   arrayUnion,
 } from './firebase';
-import { GlobalRealtimeStats, StoryRealtimeStats, RealtimeComment, Story, Chapter, Announcement, ReaderLetter, CommentReply } from '../types';
-export type { ReaderLetter, RealtimeComment, CommentReply, GlobalRealtimeStats, StoryRealtimeStats };
+import { GlobalRealtimeStats, StoryRealtimeStats, RealtimeComment, Story, Chapter, Announcement, ReaderLetter, CommentReply, CollaboratorItem, UserProfile } from '../types';
+export type { ReaderLetter, RealtimeComment, CommentReply, GlobalRealtimeStats, StoryRealtimeStats, CollaboratorItem, UserProfile };
 import {
   STORIES,
   SAMPLE_CHAPTERS,
@@ -33,6 +33,26 @@ import {
 const activeStorySubscribers = new Set<(stories: Story[]) => void>();
 const activeAnnouncementSubscribers = new Set<(announcements: Announcement[]) => void>();
 const activeChapterSubscribers = new Map<string, Set<(chapters: Chapter[]) => void>>();
+const globalStatsListeners = new Set<(stats: GlobalRealtimeStats) => void>();
+
+let cachedGlobalStats: GlobalRealtimeStats = {
+  totalVisits: typeof window !== 'undefined' ? Math.max(1, Number(localStorage.getItem('mel_site_visits') || '1')) : 1,
+  activeReaders: 1,
+  totalFollowers: 0,
+  totalComments: 0,
+  totalLikes: 0,
+};
+
+export const notifyGlobalStatsSubscribers = (partial: Partial<GlobalRealtimeStats>) => {
+  cachedGlobalStats = { ...cachedGlobalStats, ...partial };
+  globalStatsListeners.forEach((cb) => {
+    try {
+      cb({ ...cachedGlobalStats });
+    } catch (e) {
+      console.warn('Global stats subscriber error:', e);
+    }
+  });
+};
 
 const notifyStorySubscribers = (stories: Story[]) => {
   activeStorySubscribers.forEach((cb) => {
@@ -71,6 +91,8 @@ const notifyChapterSubscribers = (storyId: string, chapters: Chapter[]) => {
 const STATS_DOC_ID = 'aggregate_stats';
 const ACTIVE_PRESENCE_COLLECTION = 'reader_presences';
 const CONFIG_DOC_ID = 'main_config';
+const COLLABORATORS_COLLECTION = 'collaborators';
+const USERS_COLLECTION = 'users';
 
 // Client session unique ID to avoid counting duplicate visits in the same session
 const getSessionVisitorId = (): string => {
@@ -208,6 +230,33 @@ export const subscribeToGlobalStats = (
     (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        // Tự động làm sạch và khởi tạo lại nếu còn vướng số liệu ảo/thử nghiệm cũ (> 500 khi web chưa public)
+        const isLegacySimulated = (!data.isRealData && ((data.totalVisits ?? 0) > 500 || (data.totalLikes ?? 0) > 500));
+        if (isLegacySimulated) {
+          setDoc(
+            statsDocRef,
+            {
+              totalVisits: 0,
+              activeReaders: 1,
+              totalFollowers: 0,
+              totalComments: 0,
+              totalLikes: 0,
+              isRealData: true,
+              sanitizedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          ).catch(() => {});
+
+          callback({
+            totalVisits: 0,
+            activeReaders: 1,
+            totalFollowers: 0,
+            totalComments: 0,
+            totalLikes: 0,
+          });
+          return;
+        }
+
         callback({
           totalVisits: data.totalVisits ?? 0,
           activeReaders: data.activeReaders ?? 1,
@@ -1541,3 +1590,200 @@ export const clearAllStoriesAndChapters = async (): Promise<void> => {
     console.warn('Firestore clear warning (local cleared):', err);
   }
 };
+
+// =========================================================================
+// 8. COLLABORATORS & AUTHOR PRIVILEGES MANAGEMENT
+// =========================================================================
+
+const LOCAL_COLLABORATORS_KEY = 'mel_collaborators_cache';
+
+export const getStoredCollaborators = (): CollaboratorItem[] => {
+  try {
+    const raw = localStorage.getItem(LOCAL_COLLABORATORS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+};
+
+export const subscribeToCollaborators = (
+  callback: (list: CollaboratorItem[]) => void
+): (() => void) => {
+  // Emit local cache first for instant UI response
+  callback(getStoredCollaborators());
+
+  const colRef = collection(db, COLLABORATORS_COLLECTION);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const list: CollaboratorItem[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data();
+        list.push({
+          id: d.id,
+          email: data.email || '',
+          displayName: data.displayName || '',
+          role: data.role || 'collaborator',
+          roleTitle: data.roleTitle || 'Cộng sự Ban quản trị',
+          addedBy: data.addedBy || 'Tác giả chính',
+          addedAt: data.addedAt || new Date().toISOString(),
+          note: data.note || '',
+        });
+      });
+      // Cache locally
+      try {
+        localStorage.setItem(LOCAL_COLLABORATORS_KEY, JSON.stringify(list));
+      } catch {}
+      callback(list);
+    },
+    (err) => {
+      console.warn('Collaborators snapshot warning (using local):', err);
+      callback(getStoredCollaborators());
+    }
+  );
+};
+
+export const addCollaborator = async (
+  item: Omit<CollaboratorItem, 'id' | 'addedAt'>
+): Promise<CollaboratorItem> => {
+  const cleanEmail = item.email.toLowerCase().trim();
+  const docId = `collab_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const newCollab: CollaboratorItem = {
+    ...item,
+    id: docId,
+    email: cleanEmail,
+    addedAt: new Date().toISOString(),
+  };
+
+  // 1. Update local cache
+  const current = getStoredCollaborators();
+  const updated = [...current.filter((c) => c.email !== cleanEmail), newCollab];
+  try {
+    localStorage.setItem(LOCAL_COLLABORATORS_KEY, JSON.stringify(updated));
+  } catch {}
+
+  // 2. Write to Firestore
+  try {
+    await setDoc(doc(db, COLLABORATORS_COLLECTION, docId), newCollab);
+  } catch (err) {
+    console.warn('Firestore add collaborator warning (cached locally):', err);
+  }
+
+  return newCollab;
+};
+
+export const deleteCollaborator = async (collabId: string): Promise<void> => {
+  // 1. Update local cache
+  const current = getStoredCollaborators();
+  const updated = current.filter((c) => c.id !== collabId && c.email !== collabId);
+  try {
+    localStorage.setItem(LOCAL_COLLABORATORS_KEY, JSON.stringify(updated));
+  } catch {}
+
+  // 2. Delete from Firestore
+  try {
+    await deleteDoc(doc(db, COLLABORATORS_COLLECTION, collabId));
+  } catch (err) {
+    console.warn('Firestore delete collaborator warning:', err);
+  }
+};
+
+export const updateCollaboratorRole = async (
+  collabId: string,
+  role: CollaboratorItem['role'],
+  roleTitle?: string
+): Promise<void> => {
+  const current = getStoredCollaborators();
+  const updated = current.map((c) => {
+    if (c.id === collabId || c.email === collabId) {
+      return { ...c, role, roleTitle: roleTitle || c.roleTitle };
+    }
+    return c;
+  });
+  try {
+    localStorage.setItem(LOCAL_COLLABORATORS_KEY, JSON.stringify(updated));
+  } catch {}
+
+  try {
+    await setDoc(
+      doc(db, COLLABORATORS_COLLECTION, collabId),
+      { role, roleTitle: roleTitle || '', updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Firestore update collaborator role warning:', err);
+  }
+};
+
+// =========================================================================
+// 9. USER PROFILE & AVATAR PERSISTENCE
+// =========================================================================
+
+export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
+  try {
+    const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
+    if (snap.exists()) {
+      return snap.data() as UserProfile;
+    }
+  } catch (err) {
+    console.warn('Get user profile warning:', err);
+  }
+  // Try local fallback
+  try {
+    const raw = localStorage.getItem(`mel_profile_${uid}`);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+};
+
+export const saveUserProfile = async (profile: UserProfile): Promise<void> => {
+  // 1. Save to local storage for instant offline access
+  try {
+    localStorage.setItem(`mel_profile_${profile.uid}`, JSON.stringify(profile));
+  } catch {}
+
+  // 2. Save to Firestore
+  try {
+    await setDoc(
+      doc(db, USERS_COLLECTION, profile.uid),
+      {
+        ...profile,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Firestore save user profile warning (cached locally):', err);
+  }
+};
+
+export const subscribeToUserProfile = (
+  uid: string,
+  callback: (profile: UserProfile | null) => void
+): (() => void) => {
+  // First emit local cache
+  try {
+    const raw = localStorage.getItem(`mel_profile_${uid}`);
+    if (raw) callback(JSON.parse(raw));
+  } catch {}
+
+  const userDocRef = doc(db, USERS_COLLECTION, uid);
+  return onSnapshot(
+    userDocRef,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as UserProfile;
+        try {
+          localStorage.setItem(`mel_profile_${uid}`, JSON.stringify(data));
+        } catch {}
+        callback(data);
+      }
+    },
+    (err) => {
+      console.warn('User profile snapshot warning:', err);
+    }
+  );
+};
+

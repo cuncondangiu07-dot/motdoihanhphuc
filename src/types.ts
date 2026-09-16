@@ -126,3 +126,27 @@ export interface GlobalRealtimeStats {
   totalLikes: number;
 }
 
+export interface CollaboratorItem {
+  id: string;
+  email: string;
+  displayName: string;
+  role: 'author' | 'admin' | 'collaborator' | 'editor';
+  roleTitle?: string;
+  addedBy: string;
+  addedAt: string;
+  note?: string;
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string | null;
+  displayName: string;
+  photoURL?: string | null;
+  bio?: string;
+  websiteOrSocial?: string;
+  favoriteGenre?: string;
+  role?: 'author' | 'admin' | 'collaborator' | 'reader';
+  roleTitle?: string;
+  updatedAt?: string;
+}
+
